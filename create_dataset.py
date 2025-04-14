@@ -113,6 +113,7 @@ def generate_labels_from_manual_input():
                 plt.hist(df[col], bins=10)
                 plt.title(col)
         plt.tight_layout()
+        os.makedirs("output", exist_ok=True)
         plt.savefig("output/etiquetas_stats.png")
 
         return df

@@ -5,6 +5,7 @@ from imutils import contours as contour_utils
 from PIL import Image, ImageFilter
 from skimage.feature import peak_local_max
 from scipy import ndimage
+import os
 
 
 def midpoint(ptA, ptB):
@@ -12,7 +13,7 @@ def midpoint(ptA, ptB):
     return ((ptA[0] + ptB[0]) * 0.5, (ptA[1] + ptB[1]) * 0.5)
 
 
-def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.0):
+def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.0):
     """
     Preprocesamiento avanzado para detectar específicamente caña de azúcar en papel blanco
     """
@@ -25,16 +26,19 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
 
     # Convertir a escala de grises
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    cv2.imwrite(f"debug_gray_{os.path.basename(image_path)}", gray)
 
     # Aplicar umbralización adaptativa para mejor separación
     thresh = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 5
     )
+    cv2.imwrite(f"debug_thresh_{os.path.basename(image_path)}", thresh)
 
     # Aplicar operaciones morfológicas para limpiar ruido
-    kernel = np.ones((5, 5), np.uint8)
-    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-    closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=2)
+    kernel = np.ones((2, 2), np.uint8)
+    opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=1)
+    cv2.imwrite(f"debug_morph_{os.path.basename(image_path)}", closing)
 
     # Detectar contornos
     cnts = cv2.findContours(closing.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -42,6 +46,7 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
 
     if not cnts:
         print(f"⚠️ No se detectaron contornos en {image_path}")
+        cv2.imwrite(f"debug_nocontour_{os.path.basename(image_path)}", closing)
         resized = cv2.resize(image, target_size)
         return (
             cv2.cvtColor(resized, cv2.COLOR_BGR2RGB) / 255.0,
@@ -83,7 +88,11 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
     paper_box = cv2.boxPoints(paper_rect)
     paper_box = np.array(paper_box, dtype="int")
     paper_box = perspective.order_points(paper_box)
-
+    
+    paper_debug = image.copy()
+    cv2.drawContours(paper_debug, [paper_contour], -1, (0, 255, 0), 3)
+    cv2.imwrite(f"debug_paper_{os.path.basename(image_path)}", paper_debug)
+    
     # Calcular dimensiones del papel
     (tl, tr, br, bl) = paper_box
     widthA = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
@@ -97,17 +106,21 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
     # Crear una máscara del papel
     paper_mask = np.zeros_like(gray)
     cv2.drawContours(paper_mask, [paper_contour], -1, 255, -1)
+    cv2.imwrite(f"debug_paper_mask_{os.path.basename(image_path)}", paper_mask)
 
     # Aplicar la máscara a la imagen umbralizada para encontrar solo objetos dentro del papel
     masked_thresh = cv2.bitwise_and(thresh, thresh, mask=paper_mask)
-
+    
     # Aplicar operaciones morfológicas más específicas para la caña
     kernel_long = np.ones(
         (11, 3), np.uint8
     )  # Kernel largo para resaltar estructuras verticales
     dilated = cv2.dilate(masked_thresh, kernel_long, iterations=1)
     eroded = cv2.erode(dilated, kernel_long, iterations=1)
-
+    
+    cv2.imwrite(f"debug_masked_thresh_{os.path.basename(image_path)}", masked_thresh)
+    cv2.imwrite(f"debug_eroded_{os.path.basename(image_path)}", eroded)
+    
     # Encontrar contornos de objetos dentro del papel
     inner_cnts = cv2.findContours(
         eroded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
@@ -118,28 +131,37 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
         # Si no encontramos nada, usar una región central del papel
         x, y, w, h = cv2.boundingRect(paper_contour)
         cane_roi = image[y + h // 4 : y + 3 * h // 4, x + w // 4 : x + 3 * w // 4]
+        print(f"⚠️ No se detectaron contornos internos en {image_path}")
     else:
         # Filtrar contornos por relación de aspecto y área para encontrar la caña
+        print(f"✅ Se detectaron {len(inner_cnts)} contornos internos")
         sugarcane_contour = None
         best_score = 0
 
-        for c in inner_cnts:
+        for i, c in enumerate(inner_cnts):
             area = cv2.contourArea(c)
             x, y, w, h = cv2.boundingRect(c)
             aspect_ratio = h / w if w > 0 else 0
 
-            # La caña debería ser más alta que ancha y ocupar una porción significativa
-            if aspect_ratio > 1.0:  # Más alta que ancha
-                # Calcular un puntaje basado en área y relación de aspecto
+            print(f"  🔍 Contorno #{i}: area={area:.2f}, aspect_ratio={aspect_ratio:.2f}")
+
+            if area > 500 and aspect_ratio > 1.5:  # <-- más estricto y más realista
                 score = area * aspect_ratio
                 if score > best_score:
                     sugarcane_contour = c
                     best_score = score
+            debug_inner = image.copy()
+            cv2.drawContours(debug_inner, inner_cnts, -1, (0, 0, 255), 1)
+            cv2.imwrite(f"debug_inner_{os.path.basename(image_path)}", debug_inner)
 
         # Si no encontramos nada que parezca una caña, usar el contorno más grande dentro del papel
         if sugarcane_contour is None and inner_cnts:
             sugarcane_contour = max(inner_cnts, key=cv2.contourArea)
-
+            sugarcane_debug = image.copy()
+            cv2.drawContours(sugarcane_debug, [sugarcane_contour], -1, (255, 0, 0), 2)
+            cv2.imwrite(f"debug_sugarcane_contour_{os.path.basename(image_path)}", sugarcane_debug)
+            print(f"🌿 Caña detectada en {image_path} - Área: {cv2.contourArea(sugarcane_contour):.2f}")
+            
         # Recortar la caña
         if sugarcane_contour is not None:
             x, y, w, h = cv2.boundingRect(sugarcane_contour)
@@ -157,7 +179,7 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
 
     # Verificar si ROI es válido
     if cane_roi.size == 0 or cane_roi.shape[0] == 0 or cane_roi.shape[1] == 0:
-        print(f"⚠️ ROI inválido en {image_path}, usando imagen original")
+        print(f"⚠️   inválido en {image_path}, usando imagen original")
         cane_roi = image
 
     # Mejorar la calidad de la imagen recortada
@@ -169,7 +191,13 @@ def preprocess_image(image_path, target_size=(224, 224), reference_width_cm=164.
     resized = cv2.resize(enhanced, target_size)
 
     # Convertir a RGB y normalizar
-    normalized = cv2.cvtColor(resized, cv2.COLOR_RGB2BGR) / 255.0
+    # Asegura que el array sea uint8 antes de convertir
+    resized_uint8 = (resized * 255).astype(np.uint8) if resized.max() <= 1.0 else resized.astype(np.uint8)
+
+    # No necesitas convertirlo a BGR otra vez si ya está en RGB (PIL)
+    normalized = resized_uint8 / 255.0
+    if normalized.ndim != 3 or normalized.shape[2] != 3:
+        print("⚠️ Imagen procesada no tiene 3 canales")
 
     return normalized, pixels_per_cm
 
@@ -192,7 +220,7 @@ def extract_sugarcane_features(image_path, pixels_per_cm=None):
 
     # Umbralización adaptativa para segmentar mejor la caña
     thresh = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 5
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 2
     )
 
     # Operaciones morfológicas

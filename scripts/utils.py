@@ -1,6 +1,6 @@
 import os
 import cv2
-from scripts.preprocessing import preprocess_image
+from preprocessing import preprocess_image
 
 def batch_preprocess_images(input_dir, output_dir):
     os.makedirs(output_dir, exist_ok=True)

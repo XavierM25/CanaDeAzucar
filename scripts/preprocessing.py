@@ -1,7 +1,7 @@
 import cv2
 import os
 import numpy as np
-from scripts.process_image import (
+from .process_image import (
     extract_sugarcane_features,
     preprocess_image as advanced_preprocess,
 )

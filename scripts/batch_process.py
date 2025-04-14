@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from scripts.process_image import preprocess_image, extract_sugarcane_features
+from process_image import preprocess_image, extract_sugarcane_features
 import json
 import matplotlib.pyplot as plt
 

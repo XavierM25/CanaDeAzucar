@@ -26,19 +26,19 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
 
     # Convertir a escala de grises
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cv2.imwrite(f"debug_gray_{os.path.basename(image_path)}", gray)
+    #cv2.imwrite(f"debug_gray_{os.path.basename(image_path)}", gray)
 
     # Aplicar umbralización adaptativa para mejor separación
     thresh = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 5
     )
-    cv2.imwrite(f"debug_thresh_{os.path.basename(image_path)}", thresh)
+    #cv2.imwrite(f"debug_thresh_{os.path.basename(image_path)}", thresh)
 
     # Aplicar operaciones morfológicas para limpiar ruido
     kernel = np.ones((2, 2), np.uint8)
     opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
     closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=1)
-    cv2.imwrite(f"debug_morph_{os.path.basename(image_path)}", closing)
+    #cv2.imwrite(f"debug_morph_{os.path.basename(image_path)}", closing)
 
     # Detectar contornos
     cnts = cv2.findContours(closing.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -91,7 +91,7 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
     
     paper_debug = image.copy()
     cv2.drawContours(paper_debug, [paper_contour], -1, (0, 255, 0), 3)
-    cv2.imwrite(f"debug_paper_{os.path.basename(image_path)}", paper_debug)
+    #cv2.imwrite(f"debug_paper_{os.path.basename(image_path)}", paper_debug)
     
     # Calcular dimensiones del papel
     (tl, tr, br, bl) = paper_box
@@ -106,7 +106,7 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
     # Crear una máscara del papel
     paper_mask = np.zeros_like(gray)
     cv2.drawContours(paper_mask, [paper_contour], -1, 255, -1)
-    cv2.imwrite(f"debug_paper_mask_{os.path.basename(image_path)}", paper_mask)
+    #cv2.imwrite(f"debug_paper_mask_{os.path.basename(image_path)}", paper_mask)
 
     # Aplicar la máscara a la imagen umbralizada para encontrar solo objetos dentro del papel
     masked_thresh = cv2.bitwise_and(thresh, thresh, mask=paper_mask)
@@ -118,8 +118,8 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
     dilated = cv2.dilate(masked_thresh, kernel_long, iterations=1)
     eroded = cv2.erode(dilated, kernel_long, iterations=1)
     
-    cv2.imwrite(f"debug_masked_thresh_{os.path.basename(image_path)}", masked_thresh)
-    cv2.imwrite(f"debug_eroded_{os.path.basename(image_path)}", eroded)
+    #cv2.imwrite(f"debug_masked_thresh_{os.path.basename(image_path)}", masked_thresh)
+    #cv2.imwrite(f"debug_eroded_{os.path.basename(image_path)}", eroded)
     
     # Encontrar contornos de objetos dentro del papel
     inner_cnts = cv2.findContours(
@@ -134,7 +134,6 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
         print(f"⚠️ No se detectaron contornos internos en {image_path}")
     else:
         # Filtrar contornos por relación de aspecto y área para encontrar la caña
-        print(f"✅ Se detectaron {len(inner_cnts)} contornos internos")
         sugarcane_contour = None
         best_score = 0
 
@@ -143,7 +142,7 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
             x, y, w, h = cv2.boundingRect(c)
             aspect_ratio = h / w if w > 0 else 0
 
-            print(f"  🔍 Contorno #{i}: area={area:.2f}, aspect_ratio={aspect_ratio:.2f}")
+            #print(f"  🔍 Contorno #{i}: area={area:.2f}, aspect_ratio={aspect_ratio:.2f}")
 
             if area > 500 and aspect_ratio > 1.5:  # <-- más estricto y más realista
                 score = area * aspect_ratio
@@ -152,14 +151,14 @@ def preprocess_image(image_path, target_size=(299, 299), reference_width_cm=164.
                     best_score = score
             debug_inner = image.copy()
             cv2.drawContours(debug_inner, inner_cnts, -1, (0, 0, 255), 1)
-            cv2.imwrite(f"debug_inner_{os.path.basename(image_path)}", debug_inner)
+            #cv2.imwrite(f"debug_inner_{os.path.basename(image_path)}", debug_inner)
 
         # Si no encontramos nada que parezca una caña, usar el contorno más grande dentro del papel
         if sugarcane_contour is None and inner_cnts:
             sugarcane_contour = max(inner_cnts, key=cv2.contourArea)
             sugarcane_debug = image.copy()
             cv2.drawContours(sugarcane_debug, [sugarcane_contour], -1, (255, 0, 0), 2)
-            cv2.imwrite(f"debug_sugarcane_contour_{os.path.basename(image_path)}", sugarcane_debug)
+            #cv2.imwrite(f"debug_sugarcane_contour_{os.path.basename(image_path)}", sugarcane_debug)
             print(f"🌿 Caña detectada en {image_path} - Área: {cv2.contourArea(sugarcane_contour):.2f}")
             
         # Recortar la caña

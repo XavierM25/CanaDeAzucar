@@ -9,7 +9,7 @@ from scripts.preprocessing import preprocess_image
 
 def train_model_with_all_images():
     """Entrena un modelo potente con todas las imágenes disponibles"""
-    # Configuración
+    # Configuración xd
     raw_dir = "data/raw"
     processed_dir = "data/processed"
     labels_file = "data/labels/auto_labels.csv"
